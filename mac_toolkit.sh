@@ -415,14 +415,29 @@ block_macos_updates() {
     defaults write com.apple.SoftwareUpdate AutomaticDownload -bool false
     defaults write com.apple.SoftwareUpdate AutomaticallyInstallMacOSUpdates -bool false
     
-    # 屏蔽更新服务器（可选）
-    print_info "添加更新服务器屏蔽规则..."
-    if ! grep -q "swscan.apple.com" /etc/hosts; then
-        echo "127.0.0.1 swscan.apple.com" | sudo tee -a /etc/hosts > /dev/null
-        echo "127.0.0.1 swquery.apple.com" | sudo tee -a /etc/hosts > /dev/null
-        echo "127.0.0.1 swdownload.apple.com" | sudo tee -a /etc/hosts > /dev/null
-        echo "127.0.0.1 swcdn.apple.com" | sudo tee -a /etc/hosts > /dev/null
-    fi
+    # 屏蔽更新服务器（基于hosts）
+    print_info "备份并添加更新服务器屏蔽规则..."
+    backup_file="/etc/hosts.bak_$(date +%Y%m%d_%H%M%S)"
+    sudo cp /etc/hosts "$backup_file" && print_info "已备份 hosts 到: $backup_file" || print_warning "hosts 备份失败，继续尝试写入"
+    BLOCK_DOMAINS=(
+        "swscan.apple.com"
+        "swquery.apple.com"
+        "swdownload.apple.com"
+        "swcdn.apple.com"
+        "swdist.apple.com"
+        "updates.cdn-apple.com"
+        "updates-http.cdn-apple.com"
+        "mesu.apple.com"
+        "gdmf.apple.com"
+    )
+    for domain in "${BLOCK_DOMAINS[@]}"; do
+        if ! grep -q "$domain" /etc/hosts; then
+            echo "127.0.0.1 $domain" | sudo tee -a /etc/hosts > /dev/null
+            echo "::1 $domain" | sudo tee -a /etc/hosts > /dev/null
+        fi
+    done
+    # 刷新DNS缓存
+    sudo killall -HUP mDNSResponder 2>/dev/null || true
     
     print_success "✅ macOS系统更新已成功屏蔽！"
     echo
@@ -464,11 +479,22 @@ restore_macos_updates() {
     defaults write com.apple.SoftwareUpdate AutomaticDownload -bool true
     
     # 移除hosts文件中的屏蔽规则
-    print_info "移除更新服务器屏蔽规则..."
-    sudo sed -i '' '/swscan.apple.com/d' /etc/hosts
-    sudo sed -i '' '/swquery.apple.com/d' /etc/hosts
-    sudo sed -i '' '/swdownload.apple.com/d' /etc/hosts
-    sudo sed -i '' '/swcdn.apple.com/d' /etc/hosts
+    print_info "移除更新服务器屏蔽规则并刷新DNS..."
+    BLOCK_DOMAINS=(
+        "swscan.apple.com"
+        "swquery.apple.com"
+        "swdownload.apple.com"
+        "swcdn.apple.com"
+        "swdist.apple.com"
+        "updates.cdn-apple.com"
+        "updates-http.cdn-apple.com"
+        "mesu.apple.com"
+        "gdmf.apple.com"
+    )
+    for domain in "${BLOCK_DOMAINS[@]}"; do
+        sudo sed -i '' "/$domain/d" /etc/hosts
+    done
+    sudo killall -HUP mDNSResponder 2>/dev/null || true
     
     print_success "✅ macOS系统更新功能已恢复！"
     echo
